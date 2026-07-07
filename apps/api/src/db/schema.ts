@@ -84,5 +84,15 @@ export const deadLetters = pgTable("dead_letters", {
     .defaultNow(),
 });
 
+export const notifications = pgTable("notifications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  orderId: uuid("order_id").notNull().unique(),
+  kind: text("kind").notNull(),
+  channel: text("channel").notNull().default("email"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export type OutboxRow = typeof outbox.$inferSelect;
 export type NewOutboxRow = typeof outbox.$inferInsert;
