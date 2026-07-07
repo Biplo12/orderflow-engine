@@ -1,0 +1,7 @@
+{
+  "name": "orderflow-engine",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "Robert Siński <robertbiplosek@gmail.com>",
+  "license": "MIT"
+}
