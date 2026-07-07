@@ -1,7 +1,19 @@
 {
   "name": "orderflow-engine",
-  "version": "1.0.0",
-  "main": "index.js",
-  "author": "Robert Siński <robertbiplosek@gmail.com>",
-  "license": "MIT"
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev:api": "pnpm --filter @orderflow/api dev",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
 }
