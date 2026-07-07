@@ -15,6 +15,20 @@
       "when": 1783463473622,
       "tag": "0001_petite_calypso",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783465249618,
+      "tag": "0002_ordinary_weapon_omega",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783465526227,
+      "tag": "0003_huge_magneto",
+      "breakpoints": true
     }
   ]
 }
