@@ -2,30 +2,50 @@ import type { FastifyInstance } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { CreateOrderSchema, CreateOrderResponseSchema } from "../schemas.js";
 import { db } from "../db/client.js";
-import { orders } from "../db/schema.js";
+import { orders, outbox } from "../db/schema.js";
 
 export async function orderRoutes(app: FastifyInstance) {
   const r = app.withTypeProvider<ZodTypeProvider>();
 
-  const schema = {
-    schema: {
-      body: CreateOrderSchema,
+  r.post(
+    "/orders",
+    {
+      schema: {
+        body: CreateOrderSchema,
+        response: { 202: CreateOrderResponseSchema },
+      },
     },
-    response: { 202: CreateOrderResponseSchema },
-  } as const;
+    async (request, reply) => {
+      const orderId = await db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(orders)
+          .values({
+            customerId: request.body.customerId,
+            currency: request.body.currency,
+            items: request.body.items,
+            status: "accepted",
+          })
+          .returning({ id: orders.id });
 
-  r.post("/orders", schema, async (request, reply) => {
-    const [row] = await db
-      .insert(orders)
-      .values({
-        customerId: request.body.customerId,
-        currency: request.body.currency,
-        items: request.body.items,
-        status: "accepted",
-      })
-      .returning({ id: orders.id });
+        const id = row!.id;
 
-    request.log.info({ orderId: row!.id }, "order accepted");
-    return reply.code(202).send({ orderId: row!.id, status: "accepted" });
-  });
+        await tx.insert(outbox).values({
+          aggregateType: "order",
+          aggregateId: id,
+          eventType: "order.created",
+          payload: {
+            orderId: id,
+            customerId: request.body.customerId,
+            currency: request.body.currency,
+            items: request.body.items,
+          },
+        });
+
+        return id;
+      });
+
+      request.log.info({ orderId }, "order accepted + outbox written");
+      return reply.code(202).send({ orderId, status: "accepted" });
+    },
+  );
 }
