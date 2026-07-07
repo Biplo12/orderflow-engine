@@ -8,7 +8,7 @@ const ROUTES: Record<string, string> = {
   "inventory.reserved": "payment",
   "inventory.rejected": "notification",
   "payment.succeeded": "notification",
-  "payment.failed": "notification", // temporarily; in saga phase we will redirect to compensation
+  "payment.failed": "inventory",
 };
 
 const queues = new Map<string, Queue>();
