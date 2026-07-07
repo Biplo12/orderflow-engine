@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import pino from "pino";
 import { env } from "./env.js";
 import { db, sql } from "./db.js";
-import { payments, outbox } from "./schema.js";
+import { payments, outbox, deadLetters } from "./schema.js";
 import {
   charge,
   PermanentPaymentError,
@@ -31,7 +31,6 @@ type InventoryReserved = {
   items: OrderItem[];
 };
 
-// prosta wycena: 1000 jednostek za sztukę
 const priceOf = (items: OrderItem[]) =>
   items.reduce((sum, i) => sum + i.quantity * 1000, 0);
 
@@ -41,7 +40,6 @@ const worker = new Worker<InventoryReserved>(
     const { orderId, currency, items } = job.data;
     const amount = priceOf(items);
 
-    // idempotencja: już opłacone/rozstrzygnięte?
     const existing = await db
       .select({ id: payments.id })
       .from(payments)
@@ -56,12 +54,10 @@ const worker = new Worker<InventoryReserved>(
       await charge(items, amount);
     } catch (err) {
       if (err instanceof TransientPaymentError) {
-        // przejściowy -> rzuć, BullMQ ponowi z backoffem
         log.warn({ orderId, err: err.message }, "transient error, will retry");
         throw err;
       }
       if (err instanceof PermanentPaymentError) {
-        // trwały -> zapis failed + event, BEZ rzucania (retry nic nie da)
         await db.transaction(async (tx) => {
           await tx.insert(payments).values({
             orderId,
@@ -83,10 +79,9 @@ const worker = new Worker<InventoryReserved>(
         );
         return;
       }
-      throw err; // nieznany błąd -> traktuj jak przejściowy
+      throw err;
     }
 
-    // sukces
     await db.transaction(async (tx) => {
       await tx.insert(payments).values({
         orderId,
@@ -106,12 +101,35 @@ const worker = new Worker<InventoryReserved>(
   { connection, concurrency: env.CONCURRENCY },
 );
 
-worker.on("failed", (job, err) =>
-  log.error(
-    { jobId: job?.id, attempts: job?.attemptsMade, err: err.message },
-    "job failed",
-  ),
-);
+worker.on("failed", async (job, err) => {
+  if (!job) return;
+  const maxAttempts = job.opts.attempts ?? 1;
+
+  if (job.attemptsMade < maxAttempts) {
+    log.warn(
+      { jobId: job.id, attempt: job.attemptsMade, err: err.message },
+      "attempt failed, will retry",
+    );
+    return;
+  }
+
+  try {
+    await db
+      .insert(deadLetters)
+      .values({
+        jobId: String(job.id),
+        queue: "payment",
+        eventType: job.name,
+        payload: job.data as Record<string, unknown>,
+        error: err.message,
+        attempts: job.attemptsMade,
+      })
+      .onConflictDoNothing({ target: deadLetters.jobId });
+    log.error({ jobId: job.id, err: err.message }, "moved to dead-letter");
+  } catch (e) {
+    log.error({ e }, "failed to write dead-letter");
+  }
+});
 
 const shutdown = async (signal: string) => {
   log.info({ signal }, "shutting down");

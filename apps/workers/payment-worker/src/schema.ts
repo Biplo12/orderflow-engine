@@ -32,3 +32,16 @@ export const outbox = pgTable("outbox", {
     .defaultNow(),
   publishedAt: timestamp("published_at", { withTimezone: true }),
 });
+
+export const deadLetters = pgTable("dead_letters", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  jobId: text("job_id").notNull().unique(),
+  queue: text("queue").notNull(),
+  eventType: text("event_type").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  error: text("error").notNull(),
+  attempts: integer("attempts").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
